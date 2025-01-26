@@ -8,9 +8,7 @@
 1. [Introduction](#introduction)
 2. [Prerequisites](#prerequisites)
 3. [Installation](#installation)
-4. [How It Works](#how-it-works)
-5. [Usage Example](#usage-example)
-6. [Conclusion](#conclusion)
+4. [Usage Example](#usage-example)
 
 ---
 
