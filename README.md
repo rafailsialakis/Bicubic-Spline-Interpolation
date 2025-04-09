@@ -49,7 +49,6 @@ python3 bsiparallel.py <Input Image> <Multiplicative Factor> <Output Image>
 ```
 ## Metrics
 
-Below is an graph of execution metrics comparing parallel and sequential execution.
 ![](Assets/Graph.png)
 
 
