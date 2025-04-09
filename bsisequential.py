@@ -171,7 +171,7 @@ def extract_color_channel(image_data, color_index):
 
 def main():
     if len(sys.argv) != 4:
-        print("Usage: python3 bsiparallel.py <original_file> <output_file> <multiplicative_factor>")
+        print("Usage: python3 bsisequential.py <original_file> <output_file> <multiplicative_factor>")
         sys.exit(1)
     try:
         maximizing_factor = int(sys.argv[3])
