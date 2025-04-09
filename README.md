@@ -40,7 +40,16 @@ pip install pillow
 Below is a step-by-step example demonstrating how to use bicubic interpolation with Pillow to resize an image.
 
 ```bash
-python3 bsi.py <Input Image> <Multiplicative Factor> <Output Image>
+python3 bsisequential.py <Input Image> <Multiplicative Factor> <Output Image>
 ```
+or
+
+```bash
+python3 bsiparallel.py <Input Image> <Multiplicative Factor> <Output Image>
+```
+## Metrics
+
+Below is an graph of execution metrics comparing parallel and sequential execution.
+![My Image](Assets/graph.png)
 
 
