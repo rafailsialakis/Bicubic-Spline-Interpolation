@@ -14,7 +14,7 @@
 
 ## Introduction
 
-Bicubic interpolation is a technique that considers the values of nearby pixels to calculate new pixel values. Compared to other interpolation methods, such as bilinear, bicubic interpolation offers smoother results, making it ideal for scaling images.
+Bicubic interpolation is a technique that considers the values of nearby pixels to calculate new pixel values. Compared to other interpolation methods, such as bilinear, bicubic interpolation offers smoother results, making it ideal for scaling images. The parallel implementation is running on 3 CPU cores and is calculating the interpolation for each color channel on parallel.
 
 ---
 
