@@ -1,16 +1,8 @@
+
 import sys
 import time
+
 from PIL import Image
-from multiprocessing import Process, Manager
-
-"""
-Used for parallel processing of each color channel. Every color is determined by
-a label R G B so as to parse them from the threads 
-"""
-def process_channel(channel_data, new_width, new_height, queue, label):
-    result = cubic_spline_2D(channel_data, new_width, new_height)
-    queue.put((label, result))
-
 """
 Use of Thomas algorithm to solve the tridiagonal
 system
@@ -151,7 +143,7 @@ TODO Convert to RGB and handle all the colours
 def ImageOpen(path):
     image = Image.open(path).convert("RGB")  # Convert to RGB
     width, height = image.size
-    image_data = list(image.getdata())
+    image_data = list(image.get_flattened_data())
     return [image_data[i * width: (i + 1) * width] for i in range(height)], width, height
 
 
@@ -179,13 +171,14 @@ def extract_color_channel(image_data, color_index):
 
 def main():
     if len(sys.argv) != 4:
-        print("Usage: python3 bsiparallel.py <original_file> <output_file> <multiplicative_factor>")
+        print("Usage: python3 bsisequential.py <original_file> <output_file> <multiplicative_factor>")
         sys.exit(1)
     try:
         maximizing_factor = int(sys.argv[3])
     except ValueError:
         print("Error: <multiplicative_factor> must be an integer.")
         sys.exit(1)
+
     path = "Images/" + sys.argv[1]
     output_path = "Images/" + sys.argv[2]
     image_data, width, height = ImageOpen(path)
@@ -193,48 +186,23 @@ def main():
     new_height = height * maximizing_factor
 
     start = time.time()
+
     # Process each color channel separately
     red_channel = extract_color_channel(image_data, 0)
     green_channel = extract_color_channel(image_data, 1)
     blue_channel = extract_color_channel(image_data, 2)
 
-    #Concurrent queue initialization and definition of processes.
-    with Manager() as manager:
-        queue = manager.Queue()
-
-        processes = [
-            Process(
-                target=process_channel, args=(red_channel, new_width, new_height, queue, "R")
-            ),
-            Process(
-                target=process_channel, args=(green_channel, new_width, new_height, queue, "G")
-            ),
-            Process(
-                target=process_channel, args=(blue_channel, new_width, new_height, queue, "B")
-            )
-        ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join()
-
-        results = {"R": None, "G": None, "B": None}
-
-        while not queue.empty():
-            label, data = queue.get()
-            results[label] = data
-
-    resampled_red = results["R"]
-    resampled_green = results["G"]
-    resampled_blue = results["B"]
+    resampled_red = cubic_spline_2D(red_channel, new_width, new_height)
+    resampled_green = cubic_spline_2D(green_channel, new_width, new_height)
+    resampled_blue = cubic_spline_2D(blue_channel, new_width, new_height)
 
     # Create the final resampled RGB image
     createNewImage(resampled_red, resampled_green, resampled_blue, new_width, new_height, output_path)
-
     end = time.time()
+
     print(f"Resampled image saved to {output_path}\nTime taken: {end-start:.2f}s")
+
 
 
 if __name__ == "__main__":
     main()
-

@@ -1,8 +1,16 @@
-
 import sys
 import time
-
 from PIL import Image
+from multiprocessing import Pool, cpu_count
+
+"""
+Used for parallel processing of each color channel. Every color is determined by
+a label R G B so as to parse them from the threads 
+"""
+def process_channel(channel_data, new_width, new_height, queue, label):
+    result = cubic_spline_2D(channel_data, new_width, new_height)
+    queue.put((label, result))
+
 """
 Use of Thomas algorithm to solve the tridiagonal
 system
@@ -104,7 +112,7 @@ def cubic_spline_1D(data, new_size):
     return ReconstructY(x_resampled, list(range(size)), a, b, c, d)
 
 """
-cubic_spline_2D(image_data, new_width, new_height):
+cubic_spline_2D_parallel(image_data, new_width, new_height):
    - Handles cubic spline interpolation for 2D images.
    - **Step 1: Interpolating Rows:**
      - Each row in the image data is resampled to match the new width using `cubic_spline_1D`.
@@ -112,25 +120,24 @@ cubic_spline_2D(image_data, new_width, new_height):
      - Columns of the row-resampled image are extracted and resampled to match the new height using `cubic_spline_1D`.
    - Combines the resampled columns into the final 2D interpolated image by transposing the column data back into rows.
 """
-def cubic_spline_2D(image_data, new_width, new_height):
-    #Interpolation of rows
-    row_interpolated = []
-    for row in image_data:
-        row_interpolated.append(cubic_spline_1D(row, new_width))
+def cubic_spline_2D_parallel(image_data, new_width, new_height):
+    with Pool(cpu_count()) as pool:
+        row_interpolated = pool.starmap(
+            cubic_spline_1D,
+            [(row, new_width) for row in image_data]
+        )
+    columns = [
+        [row[col_idx] for row in row_interpolated]
+        for col_idx in range(new_width)
+    ]
+    with Pool(cpu_count()) as pool:
+        column_interpolated = pool.starmap(
+            cubic_spline_1D,
+            [(col, new_height) for col in columns]
+        )
 
-    #Interpolation of columns
-    column_interpolated = []
-    for col_idx in range(new_width):
-        column = [row[col_idx] for row in row_interpolated]
-        column_resampled = cubic_spline_1D(column, new_height)
-        column_interpolated.append(column_resampled)
-
-    #Transpose back to rows for final 2D output.
-    #Unpack first the column interpolated matrix and use
-    #zip to groups corresponding elements from each input iterable into tuples.
-
-    final_image = list(zip(*column_interpolated))
-    return final_image
+    # Transpose
+    return list(zip(*column_interpolated))
 
 """
 Method to open the image. Returns the data in a matrix.
@@ -143,7 +150,7 @@ TODO Convert to RGB and handle all the colours
 def ImageOpen(path):
     image = Image.open(path).convert("RGB")  # Convert to RGB
     width, height = image.size
-    image_data = list(image.getdata())
+    image_data = list(image.get_flattened_data())
     return [image_data[i * width: (i + 1) * width] for i in range(height)], width, height
 
 
@@ -171,7 +178,7 @@ def extract_color_channel(image_data, color_index):
 
 def main():
     if len(sys.argv) != 4:
-        print("Usage: python3 bsisequential.py <original_file> <output_file> <multiplicative_factor>")
+        print("Usage: python3 bsi_parallel.py <original_file> <output_file> <multiplicative_factor>")
         sys.exit(1)
     try:
         maximizing_factor = int(sys.argv[3])
@@ -192,9 +199,9 @@ def main():
     green_channel = extract_color_channel(image_data, 1)
     blue_channel = extract_color_channel(image_data, 2)
 
-    resampled_red = cubic_spline_2D(red_channel, new_width, new_height)
-    resampled_green = cubic_spline_2D(green_channel, new_width, new_height)
-    resampled_blue = cubic_spline_2D(blue_channel, new_width, new_height)
+    resampled_red = cubic_spline_2D_parallel(red_channel, new_width, new_height)
+    resampled_green = cubic_spline_2D_parallel(green_channel, new_width, new_height)
+    resampled_blue = cubic_spline_2D_parallel(blue_channel, new_width, new_height)
 
     # Create the final resampled RGB image
     createNewImage(resampled_red, resampled_green, resampled_blue, new_width, new_height, output_path)
@@ -203,6 +210,6 @@ def main():
     print(f"Resampled image saved to {output_path}\nTime taken: {end-start:.2f}s")
 
 
-
 if __name__ == "__main__":
     main()
+
