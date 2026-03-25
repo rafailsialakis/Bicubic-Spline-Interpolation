@@ -1,20 +1,25 @@
-
 import sys
 import time
-
+import numpy as np
 from PIL import Image
+
 """
 Use of Thomas algorithm to solve the tridiagonal
 system
 """
-def Thomas(n, a, b, c, d, M):
+def Thomas(n, a, b, c, d):
+    a, b, c, d = a.copy(), b.copy(), c.copy(), d.copy()
+    M = np.zeros(n + 2)
+
     for i in range(1, n):
         m = a[i] / b[i - 1]
-        b[i] = b[i] - m * c[i - 1]
-        d[i] = d[i] - m * d[i - 1]
+        b[i] -= m * c[i - 1]
+        d[i] -= m * d[i - 1]
+
     M[n] = d[n - 1] / b[n - 1]
     for i in range(n - 2, -1, -1):
         M[i + 1] = (d[i] - c[i] * M[i + 2]) / b[i]
+
     return M
 
 """
@@ -30,49 +35,40 @@ x[i] = (n + 0.5) * Δχ - 0.5, where n is the index.
 In the new distribution some values appear that are smaller than
 the smallest value in x and some larger than the largest value in x.
 
-So the question arises, which polynomial are we using to interpolate them? 
+So the question arises, which polynomial are we using to interpolate them?
 """
 
-def Resample(new_size, size, x):
-    x_resampled = [0] * new_size
-    Dx = size / new_size
-    for i in range(new_size):
-        x_resampled[i] = (i + 0.5) * Dx - 0.5
-        x_resampled[i] = max(0, min(size - 1, x_resampled[i]))
-    return x_resampled
-
-def ResampleNoArtifacts(new_size, size, x):
-    x_resampled = [0] * new_size
-    for i in range(new_size):
-        x_resampled[i] = i * ((size-1)/(new_size-1))
-    return x_resampled
+def ResampleNoArtifacts(new_size, size):
+    return np.linspace(0, size - 1, new_size)
 
 def ReconstructY(x_resampled, x, a, b, c, d):
     size = len(x)
     size_of_resampled = len(x_resampled)
-    y_reconstructed = [0] * size_of_resampled
+    y_reconstructed = np.zeros(size_of_resampled)
+
     for i in range(1, size):
-        for j in range(size_of_resampled):
-            if x[i - 1] <= x_resampled[j] <= x[i]:
-                y_reconstructed[j] = (
-                    a[i - 1] * (x_resampled[j] - x[i - 1]) ** 3
-                    + b[i - 1] * (x_resampled[j] - x[i - 1]) ** 2
-                    + c[i - 1] * (x_resampled[j] - x[i - 1])
-                    + d[i - 1]
-                )
+        mask = (x_resampled >= x[i - 1]) & (x_resampled <= x[i])
+        dx = x_resampled[mask] - x[i - 1]
+        y_reconstructed[mask] = (
+            a[i - 1] * dx**3
+            + b[i - 1] * dx**2
+            + c[i - 1] * dx
+            + d[i - 1]
+        )
+
     return y_reconstructed
 
 """
 Spline coefficients calculated based on the second derivative M,
 which was calculated using Thomas algorithm for tridiagonal systems
 """
-def compute_spline_coefficients(n, x, y, M, a, b, c, d):
-    for i in range(n - 1):
-        h = x[i + 1] - x[i]
-        a[i] = (M[i + 1] - M[i]) / (6 * h)
-        b[i] = M[i] / 2.0
-        c[i] = (y[i + 1] - y[i]) / h - h * (M[i + 1] + 2 * M[i]) / 6.0
-        d[i] = y[i]
+def compute_spline_coefficients(x, y, M):
+    n = len(x)
+    h = np.diff(x).astype(float)
+    a = (M[1:n] - M[:n-1]) / (6 * h)
+    b = M[:n-1] / 2.0
+    c = (y[1:] - y[:-1]) / h - h * (M[1:n] + 2 * M[:n-1]) / 6.0
+    d = y[:-1].astype(float)
     return a, b, c, d
 
 """
@@ -83,25 +79,22 @@ cubic_spline_1D(data, new_size):
    - Resamples the input data to the desired size using cubic interpolation.
 """
 def cubic_spline_1D(data, new_size):
+    data = np.asarray(data, dtype=float)
     size = len(data)
-    h = 1
-    rhs = [0] * (size - 2)
-    M = [0] * size
-    a = [0] * (size - 1)
-    b = [0] * (size - 1)
-    c = [0] * (size - 1)
-    d = [0] * (size - 1)
-    a_tridiagonal = [h / 6.0] * (size - 2)
-    b_tridiagonal = [2 * h / 3.0] * (size - 2)
-    c_tridiagonal = [h / 6.0] * (size - 2)
+    h = 1.0
 
-    for i in range(1, size - 1):
-        rhs[i - 1] = (data[i + 1] - 2 * data[i] + data[i - 1]) / h
+    a_tri = np.full(size - 2, h / 6.0)
+    b_tri = np.full(size - 2, 2 * h / 3.0)
+    c_tri = np.full(size - 2, h / 6.0)
+    rhs   = (data[2:] - 2 * data[1:-1] + data[:-2]) / h
 
-    M = Thomas(size - 2, a_tridiagonal, b_tridiagonal, c_tridiagonal, rhs, M)
-    a, b, c, d = compute_spline_coefficients(size, list(range(size)), data, M, a, b, c, d)
-    x_resampled = ResampleNoArtifacts(new_size, size, list(range(size)))
-    return ReconstructY(x_resampled, list(range(size)), a, b, c, d)
+    M = Thomas(size - 2, a_tri, b_tri, c_tri, rhs)
+
+    x = np.arange(size, dtype=float)
+    a, b, c, d = compute_spline_coefficients(x, data, M)
+
+    x_resampled = ResampleNoArtifacts(new_size, size)
+    return ReconstructY(x_resampled, x, a, b, c, d)
 
 """
 cubic_spline_2D(image_data, new_width, new_height):
@@ -113,60 +106,37 @@ cubic_spline_2D(image_data, new_width, new_height):
    - Combines the resampled columns into the final 2D interpolated image by transposing the column data back into rows.
 """
 def cubic_spline_2D(image_data, new_width, new_height):
-    #Interpolation of rows
-    row_interpolated = []
-    for row in image_data:
-        row_interpolated.append(cubic_spline_1D(row, new_width))
+    image_data = np.asarray(image_data, dtype=float)
+    height, width = image_data.shape
 
-    #Interpolation of columns
-    column_interpolated = []
-    for col_idx in range(new_width):
-        column = [row[col_idx] for row in row_interpolated]
-        column_resampled = cubic_spline_1D(column, new_height)
-        column_interpolated.append(column_resampled)
+    # Interpolation of rows
+    row_interpolated = np.array([cubic_spline_1D(image_data[r], new_width) for r in range(height)])
 
-    #Transpose back to rows for final 2D output.
-    #Unpack first the column interpolated matrix and use
-    #zip to groups corresponding elements from each input iterable into tuples.
+    # Interpolation of columns
+    col_interpolated = np.array([cubic_spline_1D(row_interpolated[:, c], new_height) for c in range(new_width)])
 
-    final_image = list(zip(*column_interpolated))
-    return final_image
+    # col_interpolated shape: (new_width, new_height) → transpose to (new_height, new_width)
+    return col_interpolated.T
 
 """
-Method to open the image. Returns the data in a matrix.
-Currently is converted to "L"
-TODO Convert to RGB and handle all the colours
+Method to open the image. Returns the data as a numpy array (height, width, 3).
 """
-
-# Other functions (Thomas, Resample, ReconstructY, compute_spline_coefficients, cubic_spline_1D, cubic_spline_2D) remain unchanged.
-
 def ImageOpen(path):
-    image = Image.open(path).convert("RGB")  # Convert to RGB
+    image = Image.open(path).convert("RGB")
     width, height = image.size
-    image_data = list(image.get_flattened_data())
-    return [image_data[i * width: (i + 1) * width] for i in range(height)], width, height
+    image_data = np.array(image)  # shape: (height, width, 3)
+    return image_data, width, height
 
 
 def createNewImage(data_R, data_G, data_B, width, height, output_path):
-    # Combine R, G, B data into a single list of tuples
-    flat_data = [
-        (
-            int(max(0, min(255, data_R[row][col]))),
-            int(max(0, min(255, data_G[row][col]))),
-            int(max(0, min(255, data_B[row][col])))
-        )
-        for row in range(height)
-        for col in range(width)
-    ]
-    image = Image.new("RGB", (width, height))
-    image.putdata(flat_data)
+    rgb = np.stack([
+        np.clip(data_R, 0, 255).astype(np.uint8),
+        np.clip(data_G, 0, 255).astype(np.uint8),
+        np.clip(data_B, 0, 255).astype(np.uint8),
+    ], axis=-1)  # shape: (height, width, 3)
+
+    image = Image.fromarray(rgb, mode="RGB")
     image.save(output_path)
-
-
-
-def extract_color_channel(image_data, color_index):
-    # Extracts a specific color channel (R=0, G=1, B=2) from the image data
-    return [[pixel[color_index] for pixel in row] for row in image_data]
 
 
 def main():
@@ -181,27 +151,26 @@ def main():
 
     path = "Images/" + sys.argv[1]
     output_path = "Images/" + sys.argv[2]
+
     image_data, width, height = ImageOpen(path)
-    new_width = width * maximizing_factor
+    new_width  = width  * maximizing_factor
     new_height = height * maximizing_factor
 
     start = time.time()
 
     # Process each color channel separately
-    red_channel = extract_color_channel(image_data, 0)
-    green_channel = extract_color_channel(image_data, 1)
-    blue_channel = extract_color_channel(image_data, 2)
+    red_channel   = image_data[:, :, 0]
+    green_channel = image_data[:, :, 1]
+    blue_channel  = image_data[:, :, 2]
 
-    resampled_red = cubic_spline_2D(red_channel, new_width, new_height)
+    resampled_red   = cubic_spline_2D(red_channel,   new_width, new_height)
     resampled_green = cubic_spline_2D(green_channel, new_width, new_height)
-    resampled_blue = cubic_spline_2D(blue_channel, new_width, new_height)
+    resampled_blue  = cubic_spline_2D(blue_channel,  new_width, new_height)
 
-    # Create the final resampled RGB image
     createNewImage(resampled_red, resampled_green, resampled_blue, new_width, new_height, output_path)
     end = time.time()
 
-    print(f"Resampled image saved to {output_path}\nTime taken: {end-start:.2f}s")
-
+    print(f"Resampled image saved to {output_path}\nTime taken: {end - start:.2f}s")
 
 
 if __name__ == "__main__":
