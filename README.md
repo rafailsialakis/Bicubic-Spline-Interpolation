@@ -34,7 +34,7 @@ This project includes:
 
 **C++:**
 - GCC with OpenMP support (`g++ -fopenmp`)
-- `stb_image` / `stb_image_write` headers (see `make stb`)
+- `stb_image` / `stb_image_write` headers
 
 ---
 
@@ -49,7 +49,6 @@ pip install pillow numpy
 **C++ build:**
 
 ```bash
-make stb     # download stb headers into includes/
 make         # compile with -O2 -fopenmp
 ```
 
